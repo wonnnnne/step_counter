@@ -117,11 +117,11 @@ class StepManager private constructor(): SensorEventListener {
                     mBeforeDate = LocalDate.now()
                     HelloWork.prefs.setBoolean("first_launching", false)
                 }
-                Log.d("[now]: ", LocalDate.now().toString())
-                if (mBeforeDate != LocalDate.now()) {
-                    mStepCount = 0.0f
-                    mBeforeDate = LocalDate.now()
-                }
+//                Log.d("[now]: ", LocalDate.now().toString())
+//                if (mBeforeDate != LocalDate.now()) {
+//                    mStepCount = 0.0f
+//                    mBeforeDate = LocalDate.now()
+//                }
 
                 Log.d("[event.values[0]]: ", event.values[0].toString())
                 Log.d("[mBeforeStepCount]: " , mBeforeStepCount.toString())

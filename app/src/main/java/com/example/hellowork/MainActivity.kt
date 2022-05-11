@@ -1,17 +1,14 @@
 package com.example.hellowork
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.PowerManager
-import android.provider.Settings
-import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.text.SimpleDateFormat
@@ -72,7 +69,10 @@ class MainActivity : AppCompatActivity() {
                 if (!HelloWork.prefs.getBoolean("step_counter", false)) {
                     Toast.makeText(this,"걸음수 측정을 하고 있지않습니다.",Toast.LENGTH_SHORT).show()
                 } else {
-                    StepService.stopService(this@MainActivity)
+                    if (isServiceRunning(StepService::class.java)) {
+                        val intent = Intent(this@MainActivity, StepService::class.java)
+                        stopService(intent)
+                    }
                     Toast.makeText(this,"걸음수 측정을 중단합니다.",Toast.LENGTH_SHORT).show()
                     checkBtn()
                 }
@@ -155,6 +155,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             stepStatus.text = "OFF"
         }
+    }
+
+    @Suppress("DEPRECATION")
+    fun <T> Context.isServiceRunning(service: Class<T>): Boolean {
+        return (getSystemService(ACTIVITY_SERVICE) as ActivityManager)
+            .getRunningServices(Integer.MAX_VALUE)
+            .any { it -> it.service.className == service.name }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

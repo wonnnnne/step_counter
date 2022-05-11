@@ -57,24 +57,6 @@ class StepService : Service() {
                 logFile.writeText(e.toString())
             }
         }
-
-        fun stopService(context: Context) {
-            try {
-//                val stopIntent = Intent(context, StepService::class.java)
-//                context.stopService(stopIntent)
-                HelloWork.prefs.setBoolean("step_counter", false)
-                val startIntent = Intent(context, StepService::class.java)
-                startIntent.action = StepServiceAction.STOP_FOREGROUND
-                ContextCompat.startForegroundService(context, startIntent)
-            } catch (e : Exception) {
-                val date = Date(System.currentTimeMillis())
-                val format = SimpleDateFormat("yyyyMMddhhmmss")
-                val time: String = format.format(date)
-                val folderPath = context.getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
-                val logFile = File(folderPath, "log_${time}.txt")
-                logFile.writeText(e.toString())
-            }
-        }
     }
 
     private lateinit var mSensorManager: SensorManager
@@ -82,66 +64,55 @@ class StepService : Service() {
     private val format = SimpleDateFormat("yyyyMMddhhmmss")
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            StepServiceAction.START_FOREGROUND -> {
-                try {
-                    createNotificationChannel()
+        try {
+            createNotificationChannel()
 
-                    val notificationIntent = Intent(this, MainActivity::class.java)
-                    notificationIntent.action = Intent.ACTION_MAIN
-                    notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-                    notificationIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            val notificationIntent = Intent(this, MainActivity::class.java)
+            notificationIntent.action = Intent.ACTION_MAIN
+            notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER)
+            notificationIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
 
 //                    val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 //                        PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
 //                    } else {
 //                        PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT)
 //                    }
-                    val pendingIntent = PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val pendingIntent = PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-                    mSensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-                    mStepManager = StepManager.getInstance()
+            mSensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+            mStepManager = StepManager.getInstance()
 
-                    val currentStep = mStepManager.initialize(this, mSensorManager)
-                    if (currentStep == -1.0f) {
-                        Toast.makeText(this, "[센서없음]", Toast.LENGTH_SHORT).show()
-                    } else {
-                        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-                            .setSmallIcon(R.drawable.ic_logo)
-                            .setColor(Color.parseColor("#009AE0"))
-                            .setContentTitle("${currentStep.toInt()} 걸음")
-                            .setContentText("1만 걸음까지 힘내봐요")
-                            .setContentIntent(pendingIntent)
-                            .build()
-                        startForeground(NOTIFICATION_ID, notification)
-                    }
-                } catch (e : Exception) {
-                    val date = Date(System.currentTimeMillis())
-                    val time: String = format.format(date)
-                    val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
-                    val logFile = File(folderPath, "log_${time}.txt")
-                    logFile.writeText(e.toString())
-                }
+            val currentStep = mStepManager.initialize(this, mSensorManager)
+            if (currentStep == -1.0f) {
+                Toast.makeText(this, "[센서없음]", Toast.LENGTH_SHORT).show()
+            } else {
+                val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_logo)
+                    .setColor(Color.parseColor("#009AE0"))
+                    .setContentTitle("${currentStep.toInt()} 걸음")
+                    .setContentText("1만 걸음까지 힘내봐요")
+                    .setContentIntent(pendingIntent)
+                    .build()
+                startForeground(NOTIFICATION_ID, notification)
             }
-
-            StepServiceAction.STOP_FOREGROUND -> {
-                try {
-                    stopForeground(true)
-                    mStepManager.stop()
-                    stopSelf()
-                } catch (e:Exception) {
-                    val date = Date(System.currentTimeMillis())
-                    val time: String = format.format(date)
-                    val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
-                    val logFile = File(folderPath, "log_${time}.txt")
-                    logFile.writeText(e.toString())
-                }
-            }
+        } catch (e : Exception) {
+            val date = Date(System.currentTimeMillis())
+            val time: String = format.format(date)
+            val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
+            val logFile = File(folderPath, "log_${time}.txt")
+            logFile.writeText(e.toString())
         }
-        return START_REDELIVER_INTENT
+        return START_STICKY
     }
 
 
+    override fun onDestroy() {
+        super.onDestroy()
+        HelloWork.prefs.setBoolean("step_counter", false)
+        stopForeground(true)
+        mStepManager.stop()
+        stopSelf()
+    }
 
     override fun onBind(intent: Intent?): IBinder? {
         return null
