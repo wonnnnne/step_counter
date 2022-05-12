@@ -1,31 +1,28 @@
 package com.example.hellowork
 
+import android.annotation.SuppressLint
 import android.app.*
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.BitmapFactory
+import android.database.Cursor
+import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.net.Uri
 import android.os.Build
 import android.os.IBinder
-import android.os.PowerManager
-import android.provider.Settings
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.style.ForegroundColorSpan
 import android.util.Log
-import android.widget.RemoteViews
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import java.io.File
-import java.lang.Exception
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.*
-import kotlin.math.log
 
 
 object StepServiceAction {
@@ -35,12 +32,25 @@ object StepServiceAction {
     const val STOP_FOREGROUND = prefix + "stopforeground"
 }
 
-class StepService : Service() {
+class StepService : Service(), SensorEventListener {
     companion object {
         private const val TAG = "[STEP_SERVICE]"
         const val NOTIFICATION_ID = 10
         const val CHANNEL_ID = "primary_notification_channel"
         val logger = LogHelper.getLogger(this::class.simpleName)
+        private var mStepCount = 0.0f
+        private var mBeforeStepCount = 0.0f
+        private lateinit var mBeforeDate: LocalDate
+        private var mStepCountSensor: Sensor?= null
+        private var mFirstLaunching = HelloWork.prefs.getBoolean("first_launching", true)
+        private val mReceiver = DateChangedReceiver()
+        private lateinit var mBuilder: Notification
+        private lateinit var pendingIntent: PendingIntent
+        private lateinit var notificationIntent: Intent
+        private lateinit var dbHelper: StepDataDbHelper
+        private lateinit var db: SQLiteDatabase
+        private lateinit var cursor: Cursor
+        private var sql : String = ""
 
         fun startService(context: Context, message: String) {
             try {
@@ -63,7 +73,6 @@ class StepService : Service() {
     }
 
     private lateinit var mSensorManager: SensorManager
-    private var mStepManager: StepManager = StepManager.getInstance()
     private val format = SimpleDateFormat("yyyyMMddhhmmss")
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -72,37 +81,28 @@ class StepService : Service() {
             createNotificationChannel()
 
             logger.debug("noti setting")
-            val notificationIntent = Intent(this, MainActivity::class.java)
+            notificationIntent = Intent(this, MainActivity::class.java)
             notificationIntent.action = Intent.ACTION_MAIN
             notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER)
             notificationIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-
-//                    val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-//                        PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
-//                    } else {
-//                        PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT)
-//                    }
-            val pendingIntent = PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            pendingIntent = PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
             logger.debug("get mSensorManager")
             mSensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-            logger.debug("get mStepManager")
-            mStepManager = StepManager.getInstance()
-            logger.debug("mStepManager : ${mStepManager}")
 
             logger.debug("mStepManager initialize")
-            val currentStep = mStepManager.initialize(this, mSensorManager)
+            val currentStep = initialize()
             if (currentStep == -1.0f) {
                 Toast.makeText(this, "[센서없음]", Toast.LENGTH_SHORT).show()
             } else {
-                val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                mBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_logo)
                     .setColor(Color.parseColor("#009AE0"))
                     .setContentTitle("${currentStep.toInt()} 걸음")
                     .setContentText("1만 걸음까지 힘내봐요")
                     .setContentIntent(pendingIntent)
                     .build()
-                startForeground(NOTIFICATION_ID, notification)
+                startForeground(NOTIFICATION_ID, mBuilder)
             }
         } catch (e : Exception) {
             val date = Date(System.currentTimeMillis())
@@ -119,8 +119,11 @@ class StepService : Service() {
         super.onDestroy()
         logger.debug("onDestroy called!")
         HelloWork.prefs.setBoolean("step_counter", false)
+        logger.debug("mSensorManager unregister listener")
+        mSensorManager.unregisterListener(this)
+        logger.debug("mReceiver unregister listener")
+        this.unregisterReceiver(mReceiver)
         stopForeground(true)
-        mStepManager.stop()
         stopSelf()
     }
 
@@ -138,6 +141,159 @@ class StepService : Service() {
                 manager!!.createNotificationChannel(serviceChannel)
             }
         }catch (e:Exception) {
+            val date = Date(System.currentTimeMillis())
+            val time: String = format.format(date)
+            val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
+            val logFile = File(folderPath, "log_${time}.txt")
+            logFile.writeText(e.toString())
+        }
+    }
+
+    private fun initialize() : Float {
+        try {
+            logger.debug("initialize called!")
+            mStepCountSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+            Log.d("first_launching : " , mFirstLaunching.toString())
+            val filter = IntentFilter()
+            filter.addAction(Intent.ACTION_DATE_CHANGED)
+            this.registerReceiver(mReceiver, filter)
+
+            if (mStepCountSensor == null) {
+                logger.debug("mStepCountSensor is null")
+                return -1.0f
+            } else {
+                logger.debug("Register Listener")
+                mSensorManager.registerListener(this, mStepCountSensor, SensorManager.SENSOR_DELAY_NORMAL)
+
+//            startDayCheckThread()
+
+                logger.debug("db helper")
+                dbHelper = StepDataDbHelper(this)
+                db = dbHelper.writableDatabase
+                logger.debug("db readable database")
+                val dbReadable = dbHelper.readableDatabase
+                logger.debug("db cursor")
+                cursor = dbReadable.rawQuery(StepData.SQL_SELECT_COUNT_ENTRIES, null)
+                if (mFirstLaunching) {
+                    logger.debug("db first launching")
+                    mStepCount = 0.0f
+                } else {
+                    while (cursor.moveToNext()) {
+                        logger.debug("db cursor get float")
+                        mStepCount = cursor.getFloat(1)
+                    }
+                }
+                return mStepCount
+            }
+
+        } catch (e : Exception) {
+            val date = Date(System.currentTimeMillis())
+            val time: String = format.format(date)
+            val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
+            val logFile = File(folderPath, "log_${time}.txt")
+            logFile.writeText(e.toString())
+            return -1.0f
+        } finally {
+            cursor.close()
+        }
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        logger.debug("onSensorChanged called!")
+        if (event?.sensor?.type == Sensor.TYPE_STEP_COUNTER) {
+            try {
+                if (mBeforeStepCount < 1.0f) {
+                    logger.debug("firstLaunching")
+                    mBeforeStepCount = event.values[0]
+                    mFirstLaunching = false
+                    mBeforeDate = LocalDate.now()
+                    HelloWork.prefs.setBoolean("first_launching", false)
+                }
+//                Log.d("[now]: ", LocalDate.now().toString())
+//                if (mBeforeDate != LocalDate.now()) {
+//                    mStepCount = 0.0f
+//                    mBeforeDate = LocalDate.now()
+//                }
+
+                logger.debug("mStepCount:${mStepCount} | mBeforeStepCount:${mBeforeStepCount}")
+                Log.d("[event.values[0]]: ", event.values[0].toString())
+                Log.d("[mBeforeStepCount]: " , mBeforeStepCount.toString())
+                mStepCount += (event.values[0] - mBeforeStepCount)
+                mBeforeStepCount = event.values[0]
+                logger.debug("mStepCount:${mStepCount} | mBeforeStepCount:${mBeforeStepCount}")
+                Log.d("[STEP_COUNT]", "$mStepCount, $event")
+
+                sendNotification()
+
+                // write database
+                logger.debug("db sql")
+                sql = "INSERT INTO step_count (${StepData.Step.COLUMN_TIMESTAMP}, ${StepData.Step.COLUMN_ACCURACY}, ${StepData.Step.COLUMN_STEP}) " +
+                        "VALUES ((datetime('now', 'localtime')), ${event.accuracy}, ${mStepCount})"
+                logger.debug("db execSQL")
+                db.execSQL(sql)
+            } catch (e : Exception) {
+                val date = Date(System.currentTimeMillis())
+                val time: String = format.format(date)
+                val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
+                val logFile = File(folderPath, "log_${time}.txt")
+                logFile.writeText(e.toString())
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+    }
+
+    fun sendNotification() {
+        try {
+            logger.debug("noti notify")
+            mBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_logo)
+                .setColor(Color.parseColor("#009AE0"))
+                .setContentTitle("${mStepCount.toInt()} 걸음")
+                .setContentText("1만 걸음까지 힘내봐요")
+                .setContentIntent(pendingIntent)
+                .build()
+            with(NotificationManagerCompat.from(this)) { notify(NOTIFICATION_ID, mBuilder) }
+        } catch (e : Exception) {
+            val date = Date(System.currentTimeMillis())
+            val time: String = format.format(date)
+            val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
+            val logFile = File(folderPath, "log_${time}.txt")
+            logFile.writeText(e.toString())
+        }
+    }
+
+    fun resetNotification(context: Context) {
+        try {
+            logger.debug("noti notify")
+            mBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_logo)
+                .setColor(Color.parseColor("#009AE0"))
+                .setContentTitle("${mStepCount.toInt()} 걸음")
+                .setContentText("1만 걸음까지 힘내봐요")
+                .setContentIntent(pendingIntent)
+                .build()
+            with(NotificationManagerCompat.from(context)) { notify(NOTIFICATION_ID, mBuilder) }
+        } catch (e : Exception) {
+            val date = Date(System.currentTimeMillis())
+            val format = SimpleDateFormat("yyyyMMddhhmmss")
+            val time: String = format.format(date)
+            val folderPath = context.getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
+            val logFile = File(folderPath, "log_${time}.txt")
+            logFile.writeText(e.toString())
+        }
+    }
+
+    fun resetSteps(context: Context) {
+        try {
+            logger.debug("resetSteps called")
+            Log.d("[now]: ", LocalDate.now().toString() )
+            mStepCount = 0.0f
+            mBeforeDate = LocalDate.now()
+            logger.debug("mStepCount:${mStepCount} | mBeforeDate:${mBeforeDate}")
+            resetNotification(context)
+        } catch (e : Exception) {
             val date = Date(System.currentTimeMillis())
             val time: String = format.format(date)
             val folderPath = getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs"
