@@ -25,6 +25,7 @@ import java.io.File
 import java.lang.Exception
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.log
 
 
 object StepServiceAction {
@@ -39,9 +40,11 @@ class StepService : Service() {
         private const val TAG = "[STEP_SERVICE]"
         const val NOTIFICATION_ID = 10
         const val CHANNEL_ID = "primary_notification_channel"
+        val logger = LogHelper.getLogger(this::class.simpleName)
 
         fun startService(context: Context, message: String) {
             try {
+                logger.debug("startService called")
                 HelloWork.prefs.setBoolean("step_counter", true)
                 val startIntent = Intent(context, StepService::class.java)
                 startIntent.putExtra("inputExtra", message)
@@ -64,9 +67,11 @@ class StepService : Service() {
     private val format = SimpleDateFormat("yyyyMMddhhmmss")
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        logger.debug("onStartCommand called!")
         try {
             createNotificationChannel()
 
+            logger.debug("noti setting")
             val notificationIntent = Intent(this, MainActivity::class.java)
             notificationIntent.action = Intent.ACTION_MAIN
             notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER)
@@ -79,9 +84,13 @@ class StepService : Service() {
 //                    }
             val pendingIntent = PendingIntent.getActivity(this,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+            logger.debug("get mSensorManager")
             mSensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+            logger.debug("get mStepManager")
             mStepManager = StepManager.getInstance()
+            logger.debug("mStepManager : ${mStepManager}")
 
+            logger.debug("mStepManager initialize")
             val currentStep = mStepManager.initialize(this, mSensorManager)
             if (currentStep == -1.0f) {
                 Toast.makeText(this, "[센서없음]", Toast.LENGTH_SHORT).show()
@@ -108,6 +117,7 @@ class StepService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        logger.debug("onDestroy called!")
         HelloWork.prefs.setBoolean("step_counter", false)
         stopForeground(true)
         mStepManager.stop()
@@ -120,6 +130,7 @@ class StepService : Service() {
 
 
     private fun createNotificationChannel() {
+        logger.debug("createNotificationChannel called!")
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val serviceChannel = NotificationChannel(CHANNEL_ID, "Foreground Service Channel", NotificationManager.IMPORTANCE_LOW)

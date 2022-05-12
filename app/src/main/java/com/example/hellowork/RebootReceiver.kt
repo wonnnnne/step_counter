@@ -13,6 +13,8 @@ import java.util.*
 class RebootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         try {
+            val logger = LogHelper.getLogger(this::class.simpleName)
+            logger.debug("RebootReceiver called!")
             Log.d("[Reboot]", "${intent?.action}")
             StepService.startService(context!!, "걸음수 : 0")
         } catch (e : Exception) {

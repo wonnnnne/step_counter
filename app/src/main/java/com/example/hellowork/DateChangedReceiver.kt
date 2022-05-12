@@ -14,7 +14,10 @@ class DateChangedReceiver: BroadcastReceiver()  {
         try {
             Log.d("[DateChangedReceiver]", "onReceive")
             if(Intent.ACTION_DATE_CHANGED == intent!!.action) {
+                val logger = LogHelper.getLogger(this::class.simpleName)
+                logger.debug("DateChangedReceiver called!")
                 val stepManager : StepManager = StepManager.getInstance()
+                logger.debug("StepManager : ${stepManager}")
                 stepManager.resetSteps()
             }
         } catch (e : Exception) {

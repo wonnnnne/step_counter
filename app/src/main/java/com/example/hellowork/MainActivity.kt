@@ -10,6 +10,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import org.apache.log4j.Logger
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -18,6 +19,7 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
     lateinit var btnStart : Button
     lateinit var stepStatus : TextView
+    private lateinit var logger : Logger
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,14 +29,18 @@ class MainActivity : AppCompatActivity() {
         val format = SimpleDateFormat("yyyyMMddhhmmss")
         val time: String = format.format(date)
         val folderPath = File(getExternalFilesDir(null)!!.absolutePath.toString() + "/" + "logs")
-        if (!folderPath.exists()) {
-            folderPath.mkdirs()
-        }
+        HelloWork.prefs.setString("file_path", folderPath.toString())
+        logger = LogHelper.getLogger(this::class.simpleName)
+//        if (!folderPath.exists()) {
+//            folderPath.mkdirs()
+//            HelloWork.prefs.setString("file_path", folderPath.toString())
+//        }
 
         stepStatus = findViewById(R.id.step_status)
         checkBtn()
         btnStart = findViewById(R.id.btn_start)
         btnStart.setOnClickListener {
+            logger.debug("btnStart clicked!")
             try {
                 if (HelloWork.prefs.getBoolean("step_counter", false)) {
                     Toast.makeText(this, "이미 걸음수를 측정중입니다.", Toast.LENGTH_SHORT).show()
@@ -49,11 +55,13 @@ class MainActivity : AppCompatActivity() {
                         } else {
                             StepService.startService(this@MainActivity, "걸음수 : 0")
                             Toast.makeText(this, "걸음수 측정을 시작합니다.", Toast.LENGTH_SHORT).show()
+                            logger.debug("service start!")
                             checkBtn()
                         }
                     } else {
                         StepService.startService(this@MainActivity, "걸음수 : 0")
                         Toast.makeText(this, "걸음수 측정을 시작합니다.", Toast.LENGTH_SHORT).show()
+                        logger.debug("service start!")
                         checkBtn()
                     }
                 }
@@ -70,8 +78,10 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this,"걸음수 측정을 하고 있지않습니다.",Toast.LENGTH_SHORT).show()
                 } else {
                     if (isServiceRunning(StepService::class.java)) {
+                        logger.debug("service stopped!")
                         val intent = Intent(this@MainActivity, StepService::class.java)
                         stopService(intent)
+
                     }
                     Toast.makeText(this,"걸음수 측정을 중단합니다.",Toast.LENGTH_SHORT).show()
                     checkBtn()
@@ -171,6 +181,7 @@ class MainActivity : AppCompatActivity() {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     StepService.startService(this@MainActivity, "걸음수 : 0")
                     Toast.makeText(this,"걸음수 측정을 시작합니다.",Toast.LENGTH_SHORT).show()
+                    logger.debug("service start!")
                     checkBtn()
                 } else {
                     Toast.makeText(this,"권한 허용이 필요합니다.",Toast.LENGTH_SHORT).show()

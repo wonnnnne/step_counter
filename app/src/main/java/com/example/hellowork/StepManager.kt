@@ -1,31 +1,20 @@
 package com.example.hellowork
 
 import android.annotation.SuppressLint
-import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.BitmapFactory
+import android.database.sqlite.SQLiteDatabase
 import android.graphics.Color
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Build
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.style.ForegroundColorSpan
 import android.util.Log
-import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.io.File
-import java.lang.Exception
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.util.*
@@ -51,11 +40,13 @@ class StepManager private constructor(): SensorEventListener {
     private var mContext: Context? = null
     private val mReceiver = DateChangedReceiver()
     private val format = SimpleDateFormat("yyyyMMddhhmmss")
+    private val logger = LogHelper.getLogger(this::class.simpleName)
 
 
     @SuppressLint("Recycle")
     fun initialize(context: Context, sensorManager: SensorManager) : Float {
         try {
+            logger.debug("initialize called!")
             mSensorManager = sensorManager
             mContext = context
             mStepCountSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
@@ -65,20 +56,26 @@ class StepManager private constructor(): SensorEventListener {
             mContext!!.registerReceiver(mReceiver, filter)
 
             if (mStepCountSensor == null) {
+                logger.debug("mStepCountSensor is null")
                 return -1.0f
             } else {
+                logger.debug("Register Listener")
                 mSensorManager.registerListener(this, mStepCountSensor, SensorManager.SENSOR_DELAY_NORMAL)
 
 //            startDayCheckThread()
 
+                logger.debug("db helper")
                 val dbHelper = StepDataDbHelper(mContext!!)
+                logger.debug("db readable database")
                 val db = dbHelper.readableDatabase
-
+                logger.debug("db cursor")
                 val cursor = db.rawQuery(StepData.SQL_SELECT_COUNT_ENTRIES, null)
                 if (mFirstLaunching) {
+                    logger.debug("db first launching")
                     mStepCount = 0.0f
                 } else {
                     while (cursor.moveToNext()) {
+                        logger.debug("db cursor get float")
                         mStepCount = cursor.getFloat(1)
                     }
                 }
@@ -97,7 +94,9 @@ class StepManager private constructor(): SensorEventListener {
 
     fun stop() {
         try {
+            logger.debug("mSensorManager unregister listener")
             mSensorManager.unregisterListener(this)
+            logger.debug("mReceiver unregister listener")
             mContext!!.unregisterReceiver(mReceiver)
         }catch (e : Exception) {
             val date = Date(System.currentTimeMillis())
@@ -109,9 +108,11 @@ class StepManager private constructor(): SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
+        logger.debug("onSensorChanged called!")
         if (event?.sensor?.type == Sensor.TYPE_STEP_COUNTER) {
             try {
                 if (mBeforeStepCount < 1.0f) {
+                    logger.debug("firstLaunching")
                     mBeforeStepCount = event.values[0]
                     mFirstLaunching = false
                     mBeforeDate = LocalDate.now()
@@ -123,20 +124,25 @@ class StepManager private constructor(): SensorEventListener {
 //                    mBeforeDate = LocalDate.now()
 //                }
 
+                logger.debug("mStepCount:${mStepCount} | mBeforeStepCount:${mBeforeStepCount}")
                 Log.d("[event.values[0]]: ", event.values[0].toString())
                 Log.d("[mBeforeStepCount]: " , mBeforeStepCount.toString())
                 mStepCount += (event.values[0] - mBeforeStepCount)
-                HelloWork.prefs.setString("mStepCount", mStepCount.toInt().toString())
                 mBeforeStepCount = event.values[0]
+                logger.debug("mStepCount:${mStepCount} | mBeforeStepCount:${mBeforeStepCount}")
                 Log.d("[STEP_COUNT]", "$mStepCount, $event")
 
                 sendNotification()
 
                 // write database
+                logger.debug("db get db helper")
                 val dbHelper = StepDataDbHelper(mContext!!)
+                logger.debug("db write")
                 val db = dbHelper.writableDatabase
+                logger.debug("db sql")
                 val sql = "INSERT INTO step_count (${StepData.Step.COLUMN_TIMESTAMP}, ${StepData.Step.COLUMN_ACCURACY}, ${StepData.Step.COLUMN_STEP}) " +
                         "VALUES ((datetime('now', 'localtime')), ${event.accuracy}, ${mStepCount})"
+                logger.debug("db execSQL")
                 db.execSQL(sql)
             } catch (e : Exception) {
                 val date = Date(System.currentTimeMillis())
@@ -149,20 +155,24 @@ class StepManager private constructor(): SensorEventListener {
     }
 
     private fun sendNotification() {
+
         try {
             // notification
+            logger.debug("noti setting")
             val notificationIntent = Intent(mContext!!, MainActivity::class.java)
             notificationIntent.action = Intent.ACTION_MAIN
             notificationIntent.addCategory(Intent.CATEGORY_LAUNCHER)
             notificationIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+
 
 //            val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 //                PendingIntent.getActivity(mContext!!,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
 //            } else {
 //                PendingIntent.getActivity(mContext!!,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT)
 //            }
-            val pendingIntent = PendingIntent.getActivity(mContext!!,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+            val pendingIntent = PendingIntent.getActivity(mContext!!,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            logger.debug("noti notify")
             val notification = NotificationCompat.Builder(mContext!!, StepService.CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_logo)
                 .setColor(Color.parseColor("#009AE0"))
@@ -184,9 +194,11 @@ class StepManager private constructor(): SensorEventListener {
 
     fun resetSteps() {
         try {
+            logger.debug("resetStepcs called")
             Log.d("[now]: ", LocalDate.now().toString() )
             mStepCount = 0.0f
             mBeforeDate = LocalDate.now()
+            logger.debug("mStepCount:${mStepCount} | mBeforeDate:${mBeforeDate}")
             sendNotification()
         } catch (e : Exception) {
             val date = Date(System.currentTimeMillis())
