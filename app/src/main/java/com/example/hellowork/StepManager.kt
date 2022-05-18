@@ -140,7 +140,7 @@ class StepManager private constructor(): SensorEventListener {
                 logger.debug("db write")
                 val db = dbHelper.writableDatabase
                 logger.debug("db sql")
-                val sql = "INSERT INTO step_count (${StepData.Step.COLUMN_TIMESTAMP}, ${StepData.Step.COLUMN_ACCURACY}, ${StepData.Step.COLUMN_STEP}) " +
+                val sql = "INSERT INTO step_count (${StepData.Step.COLUMN_TIMESTAMP}, , ${StepData.Step.COLUMN_STEP}) " +
                         "VALUES ((datetime('now', 'localtime')), ${event.accuracy}, ${mStepCount})"
                 logger.debug("db execSQL")
                 db.execSQL(sql)
@@ -174,7 +174,7 @@ class StepManager private constructor(): SensorEventListener {
             val pendingIntent = PendingIntent.getActivity(mContext!!,0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             logger.debug("noti notify")
             val notification = NotificationCompat.Builder(mContext!!, StepService.CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_logo)
+                .setSmallIcon(R.drawable.icon_noti_logo)
                 .setColor(Color.parseColor("#009AE0"))
 //                .setStyle(NotificationCompat.DecoratedCustomViewStyle())
                 .setContentTitle("${mStepCount.toInt()} 걸음")

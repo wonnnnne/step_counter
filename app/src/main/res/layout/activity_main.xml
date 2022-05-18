@@ -44,7 +44,7 @@
             android:id="@+id/step_status"
             android:textSize="20dp"
             android:text="OFF"
-            android:visibility="visible"
+            android:visibility="gone"
             android:textColor="@color/teal_700"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content" />
@@ -63,4 +63,11 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="35dp"
         android:text="Stop Service" />
+
+    <Button
+        android:id="@+id/btn_get"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="35dp"
+        android:text="get" />
 </LinearLayout>

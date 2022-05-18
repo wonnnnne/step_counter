@@ -1,6 +1,5 @@
 package com.example.hellowork
 
-import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
@@ -41,6 +40,7 @@ class StepService : Service(), SensorEventListener {
         private var mStepCount = 0.0f
         private var mBeforeStepCount = 0.0f
         private lateinit var mBeforeDate: LocalDate
+        private lateinit var mCurrentDate: LocalDate
         private var mStepCountSensor: Sensor?= null
         private var mFirstLaunching = HelloWork.prefs.getBoolean("first_launching", true)
         private val mReceiver = DateChangedReceiver()
@@ -48,7 +48,7 @@ class StepService : Service(), SensorEventListener {
         private lateinit var pendingIntent: PendingIntent
         private lateinit var notificationIntent: Intent
         private lateinit var dbHelper: StepDataDbHelper
-        private lateinit var db: SQLiteDatabase
+        lateinit var db: SQLiteDatabase
         private lateinit var cursor: Cursor
         private var sql : String = ""
 
@@ -96,7 +96,7 @@ class StepService : Service(), SensorEventListener {
                 Toast.makeText(this, "[센서없음]", Toast.LENGTH_SHORT).show()
             } else {
                 mBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_logo)
+                    .setSmallIcon(R.drawable.icon_noti_logo)
                     .setColor(Color.parseColor("#009AE0"))
                     .setContentTitle("${currentStep.toInt()} 걸음")
                     .setContentText("1만 걸음까지 힘내봐요")
@@ -136,9 +136,11 @@ class StepService : Service(), SensorEventListener {
         logger.debug("createNotificationChannel called!")
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val serviceChannel = NotificationChannel(CHANNEL_ID, "Foreground Service Channel", NotificationManager.IMPORTANCE_LOW)
-                val manager = getSystemService(NotificationManager::class.java)
-                manager!!.createNotificationChannel(serviceChannel)
+                val serviceChannel = NotificationChannel(CHANNEL_ID, "Foreground Service Channel", NotificationManager.IMPORTANCE_LOW).apply {
+                    setShowBadge(false)
+                }
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.createNotificationChannel(serviceChannel)
             }
         }catch (e:Exception) {
             val date = Date(System.currentTimeMillis())
@@ -165,8 +167,7 @@ class StepService : Service(), SensorEventListener {
                 logger.debug("Register Listener")
                 mSensorManager.registerListener(this, mStepCountSensor, SensorManager.SENSOR_DELAY_NORMAL)
 
-//            startDayCheckThread()
-
+                mCurrentDate = LocalDate.now()
                 logger.debug("db helper")
                 dbHelper = StepDataDbHelper(this)
                 db = dbHelper.writableDatabase
@@ -207,13 +208,10 @@ class StepService : Service(), SensorEventListener {
                     mBeforeStepCount = event.values[0]
                     mFirstLaunching = false
                     mBeforeDate = LocalDate.now()
+                    sql = "INSERT INTO step_count (${StepData.Step.COLUMN_TIMESTAMP}, ${StepData.Step.COLUMN_STEP}) " + "VALUES (date('now'), ${mStepCount})\n"
+                    db.execSQL(sql)
                     HelloWork.prefs.setBoolean("first_launching", false)
                 }
-//                Log.d("[now]: ", LocalDate.now().toString())
-//                if (mBeforeDate != LocalDate.now()) {
-//                    mStepCount = 0.0f
-//                    mBeforeDate = LocalDate.now()
-//                }
 
                 logger.debug("mStepCount:${mStepCount} | mBeforeStepCount:${mBeforeStepCount}")
                 Log.d("[event.values[0]]: ", event.values[0].toString())
@@ -227,8 +225,7 @@ class StepService : Service(), SensorEventListener {
 
                 // write database
                 logger.debug("db sql")
-                sql = "INSERT INTO step_count (${StepData.Step.COLUMN_TIMESTAMP}, ${StepData.Step.COLUMN_ACCURACY}, ${StepData.Step.COLUMN_STEP}) " +
-                        "VALUES ((datetime('now', 'localtime')), ${event.accuracy}, ${mStepCount})"
+                sql = "UPDATE step_count SET ${StepData.Step.COLUMN_STEP}=${mStepCount} WHERE ${StepData.Step.COLUMN_TIMESTAMP} = date('now')"
                 logger.debug("db execSQL")
                 db.execSQL(sql)
             } catch (e : Exception) {
@@ -244,11 +241,11 @@ class StepService : Service(), SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
     }
 
-    fun sendNotification() {
+    private fun sendNotification() {
         try {
             logger.debug("noti notify")
             mBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_logo)
+                .setSmallIcon(R.drawable.icon_noti_logo)
                 .setColor(Color.parseColor("#009AE0"))
                 .setContentTitle("${mStepCount.toInt()} 걸음")
                 .setContentText("1만 걸음까지 힘내봐요")
@@ -264,11 +261,11 @@ class StepService : Service(), SensorEventListener {
         }
     }
 
-    fun resetNotification(context: Context) {
+    private fun resetNotification(context: Context) {
         try {
             logger.debug("noti notify")
             mBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_logo)
+                .setSmallIcon(R.drawable.icon_noti_logo)
                 .setColor(Color.parseColor("#009AE0"))
                 .setContentTitle("${mStepCount.toInt()} 걸음")
                 .setContentText("1만 걸음까지 힘내봐요")
@@ -292,6 +289,8 @@ class StepService : Service(), SensorEventListener {
             mStepCount = 0.0f
             mBeforeDate = LocalDate.now()
             logger.debug("mStepCount:${mStepCount} | mBeforeDate:${mBeforeDate}")
+            val sql = "INSERT INTO step_count (${StepData.Step.COLUMN_TIMESTAMP}, ${StepData.Step.COLUMN_STEP}) " + "VALUES (date('now'), ${mStepCount})"
+            db.execSQL(sql)
             resetNotification(context)
         } catch (e : Exception) {
             val date = Date(System.currentTimeMillis())

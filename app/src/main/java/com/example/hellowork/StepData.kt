@@ -6,7 +6,6 @@ object StepData {
     object Step : BaseColumns {
         const val TABLE_NAME = "step_count"
         const val COLUMN_TIMESTAMP = "timestamp"
-        const val COLUMN_ACCURACY = "accuracy"
         const val COLUMN_STEP = "step"
     }
 
@@ -14,7 +13,6 @@ object StepData {
         "CREATE TABLE IF NOT EXISTS ${StepData.Step.TABLE_NAME} (" +
                 "${BaseColumns._ID} INTEGER PRIMARY KEY," +
                 "${StepData.Step.COLUMN_TIMESTAMP} TEXT," +
-                "${StepData.Step.COLUMN_ACCURACY} TEXT," +
                 "${StepData.Step.COLUMN_STEP} TEXT)"
 
     const val SQL_DELETE_ENTRIES = "DROP TABLE IF EXISTS ${StepData.Step.TABLE_NAME}"
